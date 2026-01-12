@@ -12,6 +12,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Clear loading message
       activitiesList.innerHTML = "";
+      // Reset activity select so we don't duplicate options on refresh
+      activitySelect.innerHTML = '<option value="">-- Select an activity --</option>';
 
       // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
@@ -20,11 +22,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const spotsLeft = details.max_participants - details.participants.length;
 
-        // Build participants section (bulleted list). Show friendly message if empty.
-        const participantsHtml = details.participants && details.participants.length
-          ? `<ul class="participants-list">${details.participants.map(p => `<li class="participant-item">${p}</li>`).join('')}</ul>`
-          : `<p class="no-participants">No participants yet</p>`;
-
         activityCard.innerHTML = `
           <h4>${name}</h4>
           <p>${details.description}</p>
@@ -32,9 +29,62 @@ document.addEventListener("DOMContentLoaded", () => {
           <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
           <div class="participants-section">
             <p><strong>Participants:</strong></p>
-            ${participantsHtml}
           </div>
         `;
+
+        // After inserting the static HTML, build participant items with remove buttons
+        if (details.participants && details.participants.length) {
+          const participantsContainer = document.createElement('div');
+          participantsContainer.className = 'participants-list';
+
+          details.participants.forEach(p => {
+            const item = document.createElement('div');
+            item.className = 'participant-item';
+
+            const span = document.createElement('span');
+            span.className = 'participant-email';
+            span.textContent = p;
+
+            const btn = document.createElement('button');
+            btn.className = 'remove-participant';
+            btn.setAttribute('aria-label', 'Remove participant');
+            btn.textContent = '✖';
+            btn.dataset.activity = name;
+            btn.dataset.email = p;
+
+            item.appendChild(span);
+            item.appendChild(btn);
+            participantsContainer.appendChild(item);
+          });
+
+          activityCard.querySelector('.participants-section').appendChild(participantsContainer);
+
+          // Attach click handlers for remove buttons
+          participantsContainer.querySelectorAll('.remove-participant').forEach(button => {
+            button.addEventListener('click', async (e) => {
+              const activityName = button.dataset.activity;
+              const email = button.dataset.email;
+
+              try {
+                const res = await fetch(`/activities/${encodeURIComponent(activityName)}/participants?email=${encodeURIComponent(email)}`, {
+                  method: 'DELETE'
+                });
+
+                if (res.ok) {
+                  // Refresh the activities list
+                  fetchActivities();
+                } else {
+                  const err = await res.json();
+                  console.error('Failed to remove participant:', err);
+                }
+              } catch (err) {
+                console.error('Error removing participant:', err);
+              }
+            });
+          });
+        } else {
+          activityCard.querySelector('.participants-section').innerHTML += `<p class="no-participants">No participants yet</p>`;
+        }
 
         activitiesList.appendChild(activityCard);
 
@@ -71,6 +121,8 @@ document.addEventListener("DOMContentLoaded", () => {
         messageDiv.textContent = result.message;
         messageDiv.className = "success";
         signupForm.reset();
+        // Refresh activities list to show the new participant
+        fetchActivities();
       } else {
         messageDiv.textContent = result.detail || "An error occurred";
         messageDiv.className = "error";
